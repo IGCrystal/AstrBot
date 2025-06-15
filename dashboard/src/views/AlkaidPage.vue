@@ -45,21 +45,10 @@ export default {
   },
   methods: {
     navigateTo(tab) {
-      try {
-        if (this.$router && typeof this.$router.push === 'function') {
-          this.$router.push(`/alkaid/${tab}`);
-        }
-      } catch (error) {
-        console.warn('Navigation error:', error);
-      }
+      this.$router.push(`/alkaid/${tab}`);
     },
     isActive(tab) {
-      try {
-        return this.$route && this.$route.path.includes(`/alkaid/${tab}`);
-      } catch (error) {
-        console.warn('Route check error:', error);
-        return false;
-      }
+      return this.$route.path.includes(`/alkaid/${tab}`);
     }
   },
   mounted() {
