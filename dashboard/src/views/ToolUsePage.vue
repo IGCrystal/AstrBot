@@ -555,7 +555,7 @@ export default {
 
     // 过滤后的市场服务器
     filteredMarketplaceServers() {
-      if (!this.marketplaceSearch.trim()) {
+      if (!this.marketplaceSearch || !this.marketplaceSearch.trim()) {
         return this.allMarketplaceServers;
       }
       
