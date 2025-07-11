@@ -269,105 +269,97 @@ class ToolsRoute(Route):
             logger.error(traceback.format_exc())
             return Response().error(f"删除 MCP 服务器失败: {str(e)}").__dict__
 
+    async def _fetch_mcp_page(
+        self, session: aiohttp.ClientSession, page: int, page_size: int
+    ) -> dict:
+        """获取单页MCP服务器数据"""
+        url = f"https://api.soulter.top/astrbot/mcpservers?page={page}&page_size={page_size}"
+        async with session.get(url) as response:
+            response.raise_for_status()
+            return (await response.json())["data"]
+
+    async def _fetch_all_mcp_servers(
+        self, session: aiohttp.ClientSession, max_pages: int = 1000, page_size: int = 2000
+    ) -> list:
+        """并发获取所有MCP服务器数据"""
+        import asyncio
+
+        # 获取第一页来了解总页数
+        first_page = await self._fetch_mcp_page(session, 1, page_size)
+        servers = first_page.get("mcpservers", [])
+        total_pages = first_page.get("pagination", {}).get("totalPages", 1)
+        pages_to_fetch = min(total_pages, max_pages)
+
+        # 并发获取剩余页面
+        if pages_to_fetch > 1:
+            tasks = [
+                self._fetch_mcp_page(session, page, page_size)
+                for page in range(2, pages_to_fetch + 1)
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for result in results:
+                if isinstance(result, dict):
+                    servers.extend(result.get("mcpservers", []))
+                else:
+                    logger.warning(f"获取页面数据失败: {result}")
+
+        return servers
+
+    def _filter_servers(self, servers: list, search_term: str) -> list:
+        """根据搜索条件过滤服务器"""
+        term = search_term.lower()
+        return [
+            server
+            for server in servers
+            if (
+                term in server.get("name", "").lower()
+                or term in server.get("name_h", "").lower()
+                or term in server.get("description", "").lower()
+            )
+        ]
+
+    def _paginate_list(self, items: list, page: int, page_size: int) -> dict:
+        """对列表进行分页"""
+        total = len(items)
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+
+        return {
+            "mcpservers": items[start_idx:end_idx],
+            "pagination": {
+                "total": total,
+                "totalPages": total_pages,
+                "currentPage": page,
+                "pageSize": page_size,
+            },
+        }
+
     async def get_mcp_markets(self):
+        """获取MCP市场数据，支持搜索和分页"""
         page = request.args.get("page", 1, type=int)
         page_size = request.args.get("page_size", 10, type=int)
-        search = request.args.get("search", "", type=str)
+        search = request.args.get("search", "", type=str).strip()
 
         try:
-            # 如果有搜索条件，我们需要获取所有数据进行搜索
-            if search.strip():
-                search_term = search.strip().lower()
-                all_servers = []
+            async with aiohttp.ClientSession() as session:
+                if search:
+                    # 全局搜索模式
+                    all_servers = await self._fetch_all_mcp_servers(session)
+                    filtered_servers = self._filter_servers(all_servers, search)
+                    result = self._paginate_list(filtered_servers, page, page_size)
 
-                # 首先获取第一页来了解总页数
-                first_page_url = "https://api.soulter.top/astrbot/mcpservers?page=1&page_size=100"  # 使用更大的页面大小
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(first_page_url) as response:
-                        if response.status == 200:
-                            first_data = await response.json()
-                            pagination = first_data.get("data", {}).get(
-                                "pagination", {}
-                            )
-                            total_pages = pagination.get("totalPages", 1)
+                    logger.info(
+                        f"MCP市场全局搜索 '{search}': 在{len(all_servers)}个服务器中找到{len(filtered_servers)}个匹配项"
+                    )
+                else:
+                    # 正常分页模式
+                    result = await self._fetch_mcp_page(session, page, page_size)
 
-                            # 获取第一页的数据
-                            all_servers.extend(
-                                first_data.get("data", {}).get("mcpservers", [])
-                            )
-
-                            # 获取剩余页面的数据
-                            for current_page in range(
-                                2, min(total_pages + 1, 51)
-                            ):  # 限制最多50页避免请求过多
-                                page_url = f"https://api.soulter.top/astrbot/mcpservers?page={current_page}&page_size=100"
-                                try:
-                                    async with session.get(page_url) as page_response:
-                                        if page_response.status == 200:
-                                            page_data = await page_response.json()
-                                            all_servers.extend(
-                                                page_data.get("data", {}).get(
-                                                    "mcpservers", []
-                                                )
-                                            )
-                                        else:
-                                            logger.warning(
-                                                f"获取第{current_page}页失败: HTTP {page_response.status}"
-                                            )
-                                except Exception as e:
-                                    logger.warning(f"获取第{current_page}页异常: {e}")
-                                    continue
-
-                # 在所有数据中进行搜索
-                filtered_servers = []
-                for server in all_servers:
-                    if (
-                        search_term in server.get("name", "").lower()
-                        or search_term in server.get("name_h", "").lower()
-                        or search_term in server.get("description", "").lower()
-                    ):
-                        filtered_servers.append(server)
-
-                # 分页处理搜索结果
-                start_idx = (page - 1) * page_size
-                end_idx = start_idx + page_size
-                paged_servers = filtered_servers[start_idx:end_idx]
-
-                # 构造响应数据
-                result = {
-                    "mcpservers": paged_servers,
-                    "pagination": {
-                        "total": len(filtered_servers),
-                        "totalPages": max(
-                            1, (len(filtered_servers) + page_size - 1) // page_size
-                        ),
-                        "currentPage": page,
-                        "pageSize": page_size,
-                    },
-                }
-
-                logger.info(
-                    f"MCP市场全局搜索 '{search}': 在{len(all_servers)}个服务器中找到{len(filtered_servers)}个匹配项"
-                )
                 return Response().ok(result).__dict__
-
-            else:
-                # 没有搜索条件，正常分页获取
-                BASE_URL = f"https://api.soulter.top/astrbot/mcpservers?page={page}&page_size={page_size}"
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(BASE_URL) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            return Response().ok(data["data"]).__dict__
-                        else:
-                            logger.error(f"MCP市场API请求失败: HTTP {response.status}")
-                            return (
-                                Response()
-                                .error(f"获取市场数据失败: HTTP {response.status}")
-                                .__dict__
-                            )
 
         except Exception as e:
             logger.error(f"请求MCP市场API异常: {e}")
             logger.error(traceback.format_exc())
-        return Response().error("获取市场数据失败").__dict__
+            return Response().error(f"获取市场数据失败: {e}").__dict__
