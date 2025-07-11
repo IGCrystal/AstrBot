@@ -536,6 +536,11 @@ export default {
   },
 
   computed: {
+    // 安全的搜索字符串
+    safeMarketplaceSearch() {
+      return this.marketplaceSearch || '';
+    },
+
     filteredTools() {
       if (!this.toolSearch) return this.tools;
 
@@ -570,19 +575,19 @@ export default {
       }
     },
 
-    // 过滤后的市场服务器
+    // 过滤后的市场服务器（服务端已处理搜索）
     filteredMarketplaceServers() {
-      if (!this.marketplaceSearch.trim()) {
-        return this.marketplaceServers;
-      }
-      
-      const searchTerm = this.marketplaceSearch.toLowerCase();
-      return this.marketplaceServers.filter(server => 
-        server.name.toLowerCase().includes(searchTerm) || 
-        (server.name_h && server.name_h.toLowerCase().includes(searchTerm)) ||
-        (server.description && server.description.toLowerCase().includes(searchTerm))
-      );
+      return this.marketplaceServers;
     },
+  },
+
+  watch: {
+    // 确保marketplaceSearch始终是字符串
+    marketplaceSearch(newVal) {
+      if (newVal === null || newVal === undefined) {
+        this.marketplaceSearch = '';
+      }
+    }
   },
 
   mounted() {
@@ -807,8 +812,8 @@ export default {
       };
 
       // 如果有搜索关键词，添加到请求参数
-      if (this.marketplaceSearch.trim()) {
-        params.search = this.marketplaceSearch.trim();
+      if (this.safeMarketplaceSearch.trim()) {
+        params.search = this.safeMarketplaceSearch.trim();
       }
 
       axios.get('/api/tools/mcp/market', { params })
@@ -842,6 +847,7 @@ export default {
 
     // 切换分页
     changePage(page) {
+      this.currentMarketPage = page;
       this.fetchMarketplaceServers(page);
     },
 
