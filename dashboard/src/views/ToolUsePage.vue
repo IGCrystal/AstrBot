@@ -49,11 +49,11 @@
               <v-icon color="primary" class="me-2">mdi-server</v-icon>
               <span class="text-h6">{{ tm('mcpServers.title') }}</span>
               <v-spacer></v-spacer>
-              <v-btn color="primary" prepend-icon="mdi-refresh" variant="tonal" @click="getServers" :loading="loading">
+              <v-btn color="primary" prepend-icon="mdi-refresh" variant="tonal" @click="getServers" :loading="loading" rounded="lg">
                 {{ tm('mcpServers.buttons.refresh') }}
               </v-btn>
               <v-btn color="primary" style="margin-left: 8px;" prepend-icon="mdi-plus" variant="tonal"
-                @click="showMcpServerDialog = true">
+                @click="showMcpServerDialog = true" rounded="lg">
                 {{ tm('mcpServers.buttons.add') }}
               </v-btn>
             </v-card-title>
@@ -69,7 +69,7 @@
               <v-row v-else>
                 <v-col v-for="(server, index) in mcpServers || []" :key="index" cols="12" md="6" lg="4" xl="3">
                   <item-card
-                    style="background-color: #f7f2f9;"
+                    class="server-card"
                     :item="server" 
                     title-field="name" 
                     enabled-field="active"
@@ -918,6 +918,10 @@ export default {
 .tools-page {
   padding: 20px;
   padding-top: 8px;
+}
+
+.server-card {
+  background-color: rgba(var(--v-theme-primary), 0.05) !important;
 }
 
 .tool-chips {
