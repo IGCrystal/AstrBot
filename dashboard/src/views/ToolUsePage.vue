@@ -219,7 +219,7 @@
               <v-text-field v-model="marketplaceSearch" prepend-inner-icon="mdi-magnify" :label="tm('marketplace.search')"
                 variant="outlined" density="compact" hide-details class="mx-2" style="max-width: 300px" clearable
                 @update:model-value="searchMarketplaceServers"></v-text-field>
-              <v-btn color="primary" prepend-icon="mdi-refresh" variant="text" @click="fetchMarketplaceServers(1)"
+              <v-btn color="primary" prepend-icon="mdi-refresh" variant="text" @click="fetchMarketplaceServers(1, true)"
                 :loading="marketplaceLoading">
                 {{ tm('marketplace.buttons.refresh') }}
               </v-btn>
@@ -802,7 +802,7 @@ export default {
     // MCP 市场相关方法
 
     // 获取市场服务器列表
-    fetchMarketplaceServers(page = 1) {
+    fetchMarketplaceServers(page = 1, forceRefresh = false) {
       this.marketplaceLoading = true;
 
       // 构建请求参数
@@ -814,6 +814,11 @@ export default {
       // 如果有搜索关键词，添加到请求参数
       if (this.safeMarketplaceSearch.trim()) {
         params.search = this.safeMarketplaceSearch.trim();
+      }
+
+      // 如果强制刷新，添加参数
+      if (forceRefresh) {
+        params.force_refresh = true;
       }
 
       axios.get('/api/tools/mcp/market', { params })

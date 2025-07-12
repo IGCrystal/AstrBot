@@ -29,6 +29,23 @@ class ToolsRoute(Route):
         }
         self.register_routes()
         self.tool_mgr = self.core_lifecycle.provider_manager.llm_tools
+        
+        # MCP市场数据缓存
+        self._mcp_cache = None
+        self._cache_timestamp = None
+        self._cache_ttl = 300  # 缓存5分钟
+
+    def _is_cache_valid(self):
+        """检查缓存是否有效"""
+        import time
+        if self._mcp_cache is None or self._cache_timestamp is None:
+            return False
+        return (time.time() - self._cache_timestamp) < self._cache_ttl
+
+    def _clear_cache(self):
+        """清除缓存"""
+        self._mcp_cache = None
+        self._cache_timestamp = None
 
     @property
     def mcp_config_path(self):
@@ -279,11 +296,19 @@ class ToolsRoute(Route):
             return (await response.json())["data"]
 
     async def _fetch_all_mcp_servers(
-        self, session: aiohttp.ClientSession, max_pages: int = 1000, page_size: int = 2000
+        self, session: aiohttp.ClientSession, max_pages: int = 1000, page_size: int = 2000, force_refresh: bool = False
     ) -> list:
-        """并发获取所有MCP服务器数据"""
+        """并发获取所有MCP服务器数据，支持缓存"""
         import asyncio
+        import time
 
+        # 如果缓存有效且不强制刷新，直接返回缓存数据
+        if not force_refresh and self._is_cache_valid():
+            logger.info("使用MCP市场缓存数据")
+            return self._mcp_cache
+
+        logger.info("从API获取MCP市场数据")
+        
         # 获取第一页来了解总页数
         first_page = await self._fetch_mcp_page(session, 1, page_size)
         servers = first_page.get("mcpservers", [])
@@ -303,6 +328,11 @@ class ToolsRoute(Route):
                     servers.extend(result.get("mcpservers", []))
                 else:
                     logger.warning(f"获取页面数据失败: {result}")
+
+        # 更新缓存
+        self._mcp_cache = servers
+        self._cache_timestamp = time.time()
+        logger.info(f"已缓存{len(servers)}个MCP服务器数据")
 
         return servers
 
@@ -341,19 +371,24 @@ class ToolsRoute(Route):
         page = request.args.get("page", 1, type=int)
         page_size = request.args.get("page_size", 10, type=int)
         search = request.args.get("search", "", type=str).strip()
+        force_refresh = request.args.get("force_refresh", False, type=bool)
 
         try:
             async with aiohttp.ClientSession() as session:
                 if search:
                     # 全局搜索模式
-                    all_servers = await self._fetch_all_mcp_servers(session)
+                    all_servers = await self._fetch_all_mcp_servers(session, force_refresh=force_refresh)
                     filtered_servers = self._filter_servers(all_servers, search)
                     result = self._paginate_list(filtered_servers, page, page_size)
 
+                    cache_status = "缓存" if not force_refresh and self._is_cache_valid() else "API"
                     logger.info(
-                        f"MCP市场全局搜索 '{search}': 在{len(all_servers)}个服务器中找到{len(filtered_servers)}个匹配项"
+                        f"MCP市场全局搜索 '{search}' ({cache_status}): 在{len(all_servers)}个服务器中找到{len(filtered_servers)}个匹配项"
                     )
                 else:
+                    if force_refresh:
+                        # 如果强制刷新，清除缓存
+                        self._clear_cache()
                     # 正常分页模式
                     result = await self._fetch_mcp_page(session, page, page_size)
 
