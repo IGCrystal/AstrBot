@@ -29,7 +29,7 @@ class ToolsRoute(Route):
         }
         self.register_routes()
         self.tool_mgr = self.core_lifecycle.provider_manager.llm_tools
-        
+
         # MCP市场数据缓存
         self._mcp_cache = None
         self._cache_timestamp = None
@@ -38,6 +38,7 @@ class ToolsRoute(Route):
     def _is_cache_valid(self):
         """检查缓存是否有效"""
         import time
+
         if self._mcp_cache is None or self._cache_timestamp is None:
             return False
         return (time.time() - self._cache_timestamp) < self._cache_ttl
@@ -296,7 +297,11 @@ class ToolsRoute(Route):
             return (await response.json())["data"]
 
     async def _fetch_all_mcp_servers(
-        self, session: aiohttp.ClientSession, max_pages: int = 1000, page_size: int = 2000, force_refresh: bool = False
+        self,
+        session: aiohttp.ClientSession,
+        max_pages: int = 1000,
+        page_size: int = 2000,
+        force_refresh: bool = False,
     ) -> list:
         """并发获取所有MCP服务器数据，支持缓存"""
         import asyncio
@@ -308,7 +313,7 @@ class ToolsRoute(Route):
             return self._mcp_cache
 
         logger.info("从API获取MCP市场数据")
-        
+
         # 获取第一页来了解总页数
         first_page = await self._fetch_mcp_page(session, 1, page_size)
         servers = first_page.get("mcpservers", [])
@@ -377,11 +382,17 @@ class ToolsRoute(Route):
             async with aiohttp.ClientSession() as session:
                 if search:
                     # 全局搜索模式
-                    all_servers = await self._fetch_all_mcp_servers(session, force_refresh=force_refresh)
+                    all_servers = await self._fetch_all_mcp_servers(
+                        session, force_refresh=force_refresh
+                    )
                     filtered_servers = self._filter_servers(all_servers, search)
                     result = self._paginate_list(filtered_servers, page, page_size)
 
-                    cache_status = "缓存" if not force_refresh and self._is_cache_valid() else "API"
+                    cache_status = (
+                        "缓存"
+                        if not force_refresh and self._is_cache_valid()
+                        else "API"
+                    )
                     logger.info(
                         f"MCP市场全局搜索 '{search}' ({cache_status}): 在{len(all_servers)}个服务器中找到{len(filtered_servers)}个匹配项"
                     )
